@@ -1,8 +1,11 @@
 import os
 from time import sleep
 import tflite_runtime.interpreter as tflite
+import tensorflow as tf
 from PIL import Image
 import numpy as np
+import pprint
+
 
 import cv2
 from scipy.spatial.distance import cosine
@@ -33,11 +36,18 @@ def camera_frame_gen(args):
     vs = VideoStream(src=0).start()
     sleep(2.0)
 
+    #if vs.read()== False:
+    #	vs.open()
+    	
+    
+	
     # loop over the frames from the video stream
     while True:
         # pull frame from video stream
+        
         frame = vs.read()
 
+		
         # array to PIL image format
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         yield Image.fromarray(frame)
@@ -127,7 +137,8 @@ def initialize_detector(args):
         	print('   > CUSTOM DETECTOR = FALSE')
         	model_path = os.path.join(os.path.dirname(__file__), CPU_PATH)
         
-        interpreter = tflite.Interpreter(model_path=model_path)
+        #interpreter = tflite.Interpreter(model_path=model_path)
+        interpreter = tf.lite.Interpreter(model_path=model_path)
         interpreter.allocate_tensors()
 
     return interpreter
@@ -135,35 +146,55 @@ def initialize_detector(args):
 
 def generate_detections(pil_img_obj, interpreter, threshold):
     
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+    
     # resize image to match model input dimensions
-    img = pil_img_obj.resize((interpreter.get_input_details()[0]['shape'][2], 
-                              interpreter.get_input_details()[0]['shape'][1]))
+    img = pil_img_obj.resize((input_details[0]['shape'][2], 
+                              input_details[0]['shape'][1]))
 
+    input_mean = 127.5
+    input_std = 127.5
+
+    # check the type of the input tensor
+    floating_model = input_details[0]['dtype'] == np.float32
     # add n dim
+    #input_data = np.expand_dims(img, axis=0)
     input_data = np.expand_dims(img, axis=0)
-
-    # infer image
-    interpreter.set_tensor(interpreter.get_input_details()[0]['index'], input_data)
+    
+    input_data = (np.float32(input_data) - input_mean)/ input_std
+        
+    interpreter.set_tensor(input_details[0]['index'], input_data)
     interpreter.invoke()
 
     # collect results
-    bboxes = np.squeeze(interpreter.get_tensor(interpreter.get_output_details()[0]['index']))
-    classes = np.squeeze(interpreter.get_tensor(interpreter.get_output_details()[1]['index']) + 1).astype(np.int32)
-    scores = np.squeeze(interpreter.get_tensor(interpreter.get_output_details()[2]['index']))
-    num = np.squeeze(interpreter.get_tensor(interpreter.get_output_details()[3]['index']))
+    bboxes = np.squeeze(interpreter.get_tensor(output_details[1]['index']))
+    #pprint.pprint(output_details[1])
+    #pprint.pprint(bboxes)
+    classes = np.squeeze(interpreter.get_tensor(output_details[3]['index']) + 1).astype(np.int32)
+    #print(classes)
+    scores = np.squeeze(interpreter.get_tensor(output_details[0]['index']))
+    #print(scores)
+    num = np.squeeze(interpreter.get_tensor(output_details[2]['index']))
+    #print(num)
     
+    #print(scores)
     # keep detections above specified threshold
     keep_idx = np.less(scores[np.greater(scores, threshold)], 1)
     bboxes  = bboxes[:keep_idx.shape[0]][keep_idx]
+    #pprint.pprint(bboxes)
     classes = classes[:keep_idx.shape[0]][keep_idx]
+    #pprint.pprint(classes)
     scores = scores[:keep_idx.shape[0]][keep_idx]
+   
     
+    #print(keep_idx)
     # keep detections of specified classes
     #
     #
 	#...
 	
-
+    #print(len(keep_idx))	
     # denormalize bounding box dimensions
     if len(keep_idx) > 0:
         bboxes[:,0] = bboxes[:,0] * pil_img_obj.size[1]
@@ -191,6 +222,8 @@ def generate_detections(pil_img_obj, interpreter, threshold):
     scores = np.array([d.confidence for d in detections])
     indices = non_max_suppression(boxes, nms_max_overlap, scores)
     detections = [detections[i] for i in indices]
+    #pprint.pprint(detections)
+    
     
     return detections
 
@@ -202,6 +235,8 @@ def parse_label_map(args, DEFAULT_LABEL_MAP_PATH):
     labels = {}
     for i, row in enumerate(open(args.label_map_path)):
         labels[i] = row.replace('\n','')
+    
+    pprint.pprint(labels)
     return labels
 
 

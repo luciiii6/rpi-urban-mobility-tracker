@@ -3,9 +3,10 @@
 import os
 import time
 import argparse
-
+import math
 import cv2
 import numpy as np
+import pprint
 
 # deep sort
 from deep_sort.tracker import Tracker
@@ -27,6 +28,7 @@ TRACKER_OUTPUT_TEXT_FILE = 'object_paths.csv'
 MAX_COSINE_DIST = 0.4
 NN_BUDGET = None
 NMS_MAX_OVERLAP = 1.0
+
 
 #--- MAIN ---------------------------------------------------------------------+
 
@@ -50,6 +52,9 @@ def main():
     if args.model_path: assert os.path.exists(args.model_path)==True, "can't find the specified model..."
     if args.label_map_path: assert os.path.exists(args.label_map_path)==True, "can't find the specified label map..."
     if args.video_path: assert os.path.exists(args.video_path)==True, "can't find the specified video file..."
+    
+    counter = 0
+    counting_dict={}
 
     print('> INITIALIZING UMT...')
     print('   > THRESHOLD:',args.threshold)
@@ -94,41 +99,81 @@ def main():
             # proceed to updating state
             if len(detections) == 0: print('   > no detections...')
             else:
-            
+            	
+            	
                 # update tracker
                 tracker.predict()
                 tracker.update(detections)
+                print(len(detections))
                 
+                
+                
+                drawing_points=[]
+                for detection in detections:
+                	bbox1 = detection.to_tlbr()
+                	for detection2 in detections:
+                		if detection != detection2:
+                			bbox2 = detection2.to_tlbr()
+                			absolute_dist = math.sqrt(np.power(bbox1[2]-bbox2[2],2) + np.power(bbox1[3] - bbox2[3],2))
+                			drawing_points.append([absolute_dist,[bbox1[2],bbox1[3]],[bbox2[2],bbox2[3]]])
+                
+                
+                			
                 # save object locations
                 if len(tracker.tracks) > 0:
                     for track in tracker.tracks:
                         bbox = track.to_tlbr()
-                        class_name = labels[track.class_name]
+                        #print(labels)
+                        class_name = labels[0]
                         row = (f'{i},{f_time},{class_name},'
                             f'{track.track_id},{int(track.age)},'
                             f'{int(track.time_since_update)},{str(track.hits)},'
                             f'{int(bbox[0])},{int(bbox[1])},'
                             f'{int(bbox[2])},{int(bbox[3])}')
                         print(row, file=out_file)
-                
+                        
             # only for live display
             if args.live_view or args.save_frames:
             
             	# convert pil image to cv2
                 cv2_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-            
+                cv2.line(cv2_img, (int(50), int(pil_img.height/2)), (int(pil_img.width - 50), int(pil_img.height/2)), (55,55,55),10)
+                
             	# cycle through actively tracked objects
                 for track in tracker.tracks:
                     if not track.is_confirmed() or track.time_since_update > 1:
                         continue
                     
+                    
+                    	
+                    
+                    
                     # draw detections and label
                     bbox = track.to_tlbr()
-                    class_name = labels[track.class_name]
+                    if track.track_id not in counting_dict:
+                    	counting_dict[track.track_id] = [(bbox[0] + bbox[2])/2,(bbox[1]+bbox[3])/2]
+                    else:
+                    	if counting_dict[track.track_id][1] < pil_img.height/2 and (bbox[1]+bbox[3])/2 > pil_img.height/2:
+                    		counter = counter - 1
+                    	if counting_dict[track.track_id][1] > pil_img.height/2 and (bbox[1]+bbox[3])/2 < pil_img.height/2:
+                    		counter = counter + 1
+                    	
+                    	counting_dict[track.track_id] = [(bbox[0] + bbox[2])/2,(bbox[1]+bbox[3])/2]
+                    
+                    class_name = labels[0]
                     color = COLORS[int(track.track_id) % len(COLORS)].tolist()
                     cv2.rectangle(cv2_img, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), color, 2)
                     cv2.rectangle(cv2_img, (int(bbox[0]), int(bbox[1]-30)), (int(bbox[0])+(len(str(class_name))+len(str(track.track_id)))*17, int(bbox[1])), color, -1)
                     cv2.putText(cv2_img, str(class_name) + "-" + str(track.track_id), (int(bbox[0]), int(bbox[1]-10)), cv2.FONT_HERSHEY_PLAIN, 1, (255,255,255), 1)
+                    cv2.putText(cv2_img, "Counter= " + str(counter), (int(pil_img.width/2 -20), int(50)), cv2.FONT_HERSHEY_PLAIN, 3, (0,0,0), 2)
+                    
+                    for point in drawing_points:
+                    	if point[0] < 500:
+                    		cv2.line(cv2_img, (int(point[1][0]), int(point[1][1])), (int(point[2][0]), int(point[2][1])), (0,0,255))
+                    	else:
+                    		cv2.line(cv2_img, (int(point[1][0]), int(point[1][1])), (int(point[2][0]), int(point[2][1])), (0,255,0))
+                    	
+                    pprint.pprint(counting_dict)
 
                 # live view
                 if args.live_view:
