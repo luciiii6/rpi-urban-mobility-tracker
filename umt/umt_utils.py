@@ -29,6 +29,15 @@ w_path = os.path.join(os.path.dirname(__file__), 'deep_sort/mars-small128.pb')
 encoder = gd.create_box_encoder(w_path, batch_size=1)
     
 
+def calculate_line_parameters(point1, point2):
+
+	pass
+
+
+def create_database_directory(curr_path):
+	os.mkdir(curr_path + "/database")
+	return
+	
 def camera_frame_gen(args):
 
     # initialize the video stream and allow the camera sensor to warmup
@@ -157,7 +166,7 @@ def generate_detections(pil_img_obj, interpreter, threshold):
     input_std = 127.5
 
     # check the type of the input tensor
-    floating_model = input_details[0]['dtype'] == np.float32
+    #floating_model = input_details[0]['dtype'] == np.float32
     # add n dim
     #input_data = np.expand_dims(img, axis=0)
     input_data = np.expand_dims(img, axis=0)
@@ -186,6 +195,7 @@ def generate_detections(pil_img_obj, interpreter, threshold):
     classes = classes[:keep_idx.shape[0]][keep_idx]
     #pprint.pprint(classes)
     scores = scores[:keep_idx.shape[0]][keep_idx]
+    #pprint.pprint(scores)
    
     
     #print(keep_idx)
@@ -218,10 +228,10 @@ def generate_detections(pil_img_obj, interpreter, threshold):
 
     # run non-maximum suppression
     # borrowed from: https://github.com/nwojke/deep_sort/blob/master/deep_sort_app.py#L174
-    boxes = np.array([d.tlwh for d in detections])
-    scores = np.array([d.confidence for d in detections])
-    indices = non_max_suppression(boxes, nms_max_overlap, scores)
-    detections = [detections[i] for i in indices]
+    #boxes = np.array([d.tlwh for d in detections])
+    #scores = np.array([d.confidence for d in detections])
+    #indices = non_max_suppression(boxes, nms_max_overlap, scores)
+    #detections = [detections[i] for i in indices]
     #pprint.pprint(detections)
     
     
