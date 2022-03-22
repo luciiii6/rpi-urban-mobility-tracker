@@ -164,14 +164,17 @@ def generate_detections(pil_img_obj, interpreter, threshold):
 
     input_mean = 127.5
     input_std = 127.5
-
+    input_data = np.expand_dims(img, axis=0)
+	
     # check the type of the input tensor
-    #floating_model = input_details[0]['dtype'] == np.float32
+    if input_details[0]['dtype'] == np.float32:
+    	input_data = (np.float32(input_data) - input_mean)/ input_std
+    
     # add n dim
     #input_data = np.expand_dims(img, axis=0)
-    input_data = np.expand_dims(img, axis=0)
     
-    input_data = (np.float32(input_data) - input_mean)/ input_std
+    
+    
         
     interpreter.set_tensor(input_details[0]['index'], input_data)
     interpreter.invoke()
@@ -195,7 +198,8 @@ def generate_detections(pil_img_obj, interpreter, threshold):
     classes = classes[:keep_idx.shape[0]][keep_idx]
     #pprint.pprint(classes)
     scores = scores[:keep_idx.shape[0]][keep_idx]
-    #pprint.pprint(scores)
+    pprint.pprint(len(scores))
+    pprint.pprint(scores)
    
     
     #print(keep_idx)

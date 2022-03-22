@@ -114,7 +114,7 @@ def main():
             	print(header, file=out_file)
             	w, h = pil_img.size
             	if args.placement == "facing":
-            		coord_count = h/3
+            		coord_count = h/4
             	else:
             		coord_count = round(h/1.3)
 
@@ -212,7 +212,7 @@ def main():
             
             	# convert pil image to cv2
                 cv2_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-                cv2.line(cv2_img, (int(50), int(pil_img.height/2)), (int(pil_img.width - 50), int(pil_img.height/2)), (55,55,55),10)
+                cv2.line(cv2_img, (int(50), int(coord_count)), (int(pil_img.width - 50), int(coord_count)), (55,55,55),5)
                 
                 #print(len(tracker.tracks))
                 
