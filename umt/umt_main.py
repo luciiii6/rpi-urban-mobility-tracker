@@ -49,6 +49,8 @@ def main():
     parser.add_argument('-nframes', dest='nframes', type=int, required=False, default=10, help='specify nunber of frames to process')
     parser.add_argument('-display', dest='live_view', required=False, default=False, action='store_true', help='add this flag to view a live display. note, that this will greatly slow down the fps rate.')
     parser.add_argument('-save', dest='save_frames', required=False, default=False, action='store_true', help='add this flag if you want to persist the image output. note, that this will greatly slow down the fps rate.')
+    parser.add_argument('-placement', dest='placement', required=True, type=str, default='above', help='give parameter "above" or "facing" meaning if the camera is above the door or facing the door, to count properly')
+   	
     args = parser.parse_args()
     
     # basic checks
@@ -56,6 +58,7 @@ def main():
     if args.model_path: assert os.path.exists(args.model_path)==True, "can't find the specified model..."
     if args.label_map_path: assert os.path.exists(args.label_map_path)==True, "can't find the specified label map..."
     if args.video_path: assert os.path.exists(args.video_path)==True, "can't find the specified video file..."
+    if args.placement != "facing" or args.placement != "above" or args.placement: assert "specify the placement of the camera using '-placement facing/above' meaning the camera is above the door or facing the door"
     
     counter_in = 0
     counter_out = 0
@@ -109,6 +112,11 @@ def main():
             	    'obj_t_since_last_update,obj_hits,'
             	    'xmin,ymin,xmax,ymax')
             	print(header, file=out_file)
+            	w, h = pil_img.size
+            	if args.placement == "facing":
+            		coord_count = h/3
+            	else:
+            		coord_count = round(h/1.3)
 
             # get detections
             detections = generate_detections(pil_img, interpreter, args.threshold)
@@ -136,14 +144,21 @@ def main():
                 	if track.track_id not in counting_dict:
                 		counting_dict[track.track_id] = [(bbox[0] + bbox[2])/2,(bbox[1]+bbox[3])/2]
                 	else:
-                		if counting_dict[track.track_id][1] < pil_img.height/2 and (bbox[1]+bbox[3])/2 > pil_img.height/2:
+                		if counting_dict[track.track_id][1] < coord_count and (bbox[1]+bbox[3])/2 > coord_count:
                 			ls = str(datetime.now()).split()
                 			cursor.execute(f'INSERT INTO timestamp(time,date,direction) VALUES ("{ls[1]}","{ls[0]}",1);')
-                			counter_out = counter_out + 1
-                		if counting_dict[track.track_id][1] > pil_img.height/2 and (bbox[1]+bbox[3])/2 < pil_img.height/2:
+                			if 	args.placement == "facing":
+                				counter_in = counter_in + 1
+                			else:
+                				counter_out = counter_out + 1
+                		if counting_dict[track.track_id][1] > coord_count and (bbox[1]+bbox[3])/2 < coord_count:
                 			ls = str(datetime.now()).split()
                 			cursor.execute(f'INSERT INTO timestamp(time,date,direction) VALUES ("{ls[1]}","{ls[0]}",0);')
-                			counter_in = counter_in + 1
+                			if args.placement == "facing":
+                				counter_out = counter_out + 1
+                			else:
+                				counter_in = counter_in + 1
+                			
                 		
                 		counting_dict[track.track_id] = [(bbox[0] + bbox[2])/2,(bbox[1]+bbox[3])/2]
                 		
