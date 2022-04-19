@@ -8,11 +8,11 @@ with open('requirements.txt') as f:
     
 setup(
     name='umt',
-    version='0.0.2',
-    author='Nathan A. Rooy',
-    author_email='nathanrooy@gmail.com',
-    url='https://github.com/nathanrooy/rpi-urban-mobility-tracker',
-    description='The easiest way to count pedestrians, cyclists, and vehicles on edge computing devices.',
+    version='0.0.3',
+    author='Nathan A. Rooy, Suvaila Lucian-Ioan',
+    author_email='nathanrooy@gmail.com, luci.suvaila@gmail.com',
+    url='https://github.com/luciiii6/rpi-urban-mobility-tracker',
+    description='A way to count people using machine learning',
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=['umt'],
