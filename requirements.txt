@@ -6,4 +6,4 @@ pillow
 opencv-python
 scipy
 scikit-image
-tensorflow~=2.4.0
+tensorflow-aarch64
