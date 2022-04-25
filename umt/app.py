@@ -1,7 +1,11 @@
-from application import Application
+from .application import Application
 
-if __name__ == '__main__':
+
+def main():
     app = Application()
     app.preinitialization()
     app.run()
-     
+
+
+if __name__ == '__main__':
+    main()
