@@ -18,16 +18,16 @@ w_path = os.path.join(os.path.dirname(__file__), 'deep_sort/mars-small128.pb')
 encoder = gd.create_box_encoder(w_path, batch_size=1)
 
 class Utils:
-    @classmethod
+    @staticmethod
     def calculate_line_parameters(point1, point2):
         pass
 
-    @classmethod
+    @staticmethod
     def create_database_directory(curr_path):
         os.mkdir(curr_path + "/database")
         return
 
-    @classmethod    
+    @staticmethod    
     def camera_frame_gen(args):
 
         # initialize the video stream and allow the camera sensor to warmup
@@ -43,7 +43,7 @@ class Utils:
             yield Image.fromarray(frame)
         pass
 
-    @classmethod
+    @staticmethod
     def image_seq_gen(args):
 
         # collect images to be processed
@@ -54,7 +54,7 @@ class Utils:
         # cycle through image sequence and yield a PIL img object
         for frame in range(0, args.nframes): yield Image.open(images[frame])
 
-    @classmethod
+    @staticmethod
     def video_frame_gen(args):
         
         counter = 0
@@ -72,7 +72,7 @@ class Utils:
 
             yield Image.fromarray(frame)
 
-    @classmethod
+    @staticmethod
     def initialize_img_source(args):
 
         # track objects from video file
@@ -84,7 +84,7 @@ class Utils:
         # track objects from camera source
         if args.camera: return Utils.camera_frame_gen
 
-    @classmethod
+    @staticmethod
     def initialize_detector(args):
 
         TPU_PATH = 'models/tpu/mobilenet_ssd_v2_coco_quant/mobilenet_ssd_v2_coco_quant_postprocess_edgetpu.tflite'
@@ -131,7 +131,7 @@ class Utils:
 
         return interpreter
 
-    @classmethod
+    @staticmethod
     def generate_detections(pil_img_obj, interpreter, threshold):
         
         input_details = interpreter.get_input_details()
@@ -158,7 +158,7 @@ class Utils:
         num = np.squeeze(interpreter.get_tensor(output_details[2]['index']))
 
         keep_idx = np.less(scores[np.greater(scores, threshold)], 1)
-        bboxes  = bboxes[:keep_idx.shape[0]][keep_idx]
+        bboxes = bboxes[:keep_idx.shape[0]][keep_idx]
         classes = classes[:keep_idx.shape[0]][keep_idx]
         scores = scores[:keep_idx.shape[0]][keep_idx]
         pprint.pprint(len(scores))
@@ -185,7 +185,7 @@ class Utils:
         detections = [Detection(bbox, score, feature, class_name) for bbox, score, feature, class_name in zip(bboxes, scores, features, classes)]
         return detections
 
-    @classmethod
+    @staticmethod
     def parse_label_map(args, DEFAULT_LABEL_MAP_PATH):
         if args.label_map_path == DEFAULT_LABEL_MAP_PATH: print('   > CUSTOM LABEL MAP = FALSE')
         else: print(f'   > CUSTOM LABEL MAP = TRUE ({args.label_map_path})')

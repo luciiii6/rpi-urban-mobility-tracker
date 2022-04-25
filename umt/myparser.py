@@ -6,7 +6,7 @@ DEFAULT_LABEL_MAP_PATH = os.path.join(os.path.dirname(__file__), LABEL_PATH)
 
 class MyParser:
 
-    @classmethod
+    @staticmethod
     def parse():
         parser = argparse.ArgumentParser(description='--- Raspbery Pi Urban Mobility Tracker ---')
         parser.add_argument('-modelpath', dest='model_path', type=str, required=False, help='specify path of a custom detection model')
