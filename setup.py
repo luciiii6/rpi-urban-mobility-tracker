@@ -25,7 +25,7 @@ setup(
     install_requires=required,
     entry_points={
         'console_scripts': [
-            'umt = umt.umt_main:main'
+            'umt = umt.app:main'
         ]
     },
     package_data={
