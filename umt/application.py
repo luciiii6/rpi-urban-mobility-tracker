@@ -4,9 +4,9 @@ import cv2
 import time
 import datetime
 import numpy as np
-from .utils import Utils
-from .myparser import MyParser
-from .validator import Validator
+from utils import Utils
+from myparser import MyParser
+from validator import Validator
 # deep sort
 from deep_sort.tracker import Tracker
 from deep_sort import nn_matching
@@ -33,6 +33,8 @@ class Application:
         self.labels = None
         self.interpreter = None
         self.COLORS = None
+        self.ids = None
+        self.detections = None
 
     def preinitialization(self):
         self.args = MyParser.parse()
@@ -68,7 +70,6 @@ class Application:
         # initialize plot colors (if necessary)
         if self.args.live_view or self.args.save_frames:
             self.COLORS = (np.random.rand(32, 3) * 255).astype(int)
-
     def run(self):
         for i, pil_img in enumerate(self.img_generator(self.args)):
             print('> FRAME:', i)
@@ -82,24 +83,24 @@ class Application:
                     coord_count = round(h/1.3)
 
             # get detections
-            detections = Utils.generate_detections(
+            self.detections = Utils.generate_detections(
                 pil_img, self.interpreter, self.args.threshold)
 
             # proceed to updating state
-            if len(detections) == 0:
+            if len(self.detections) == 0:
                 print('   > no detections...')
             else:
 
                 # update tracker
                 self.tracker.predict()
-                self.tracker.update(detections)
+                self.tracker.update(self.detections)
                 # print(len(detections))
-                ids = []
+                self.ids = []
                 for track in self.tracker.tracks:
-                    ids.append(track.track_id)
+                    self.ids.append(track.track_id)
 
                 for key in list(self.counting_dict):
-                    if key not in ids:
+                    if key not in self.ids:
                         self.counting_dict.pop(key, None)
 
                 for track in self.tracker.tracks:
@@ -109,7 +110,7 @@ class Application:
                             (bbox[0] + bbox[2])/2, (bbox[1]+bbox[3])/2]
                     else:
                         if self.counting_dict[track.track_id][1] < coord_count and (bbox[1]+bbox[3])/2 > coord_count:
-                            ls = str(datetime.now()).split()
+                            ls = str(datetime.datetime.now()).split()
                             self.cursor.execute(
                                 f'INSERT INTO timestamp(time,date,direction) VALUES ("{ls[1]}","{ls[0]}",1);')
                             if self.args.placement == "facing":
@@ -117,7 +118,7 @@ class Application:
                             else:
                                 self.counter_out = self.counter_out + 1
                         if self.counting_dict[track.track_id][1] > coord_count and (bbox[1]+bbox[3])/2 < coord_count:
-                            ls = str(datetime.now()).split()
+                            ls = str(datetime.datetime.now()).split()
                             self.cursor.execute(
                                 f'INSERT INTO timestamp(time,date,direction) VALUES ("{ls[1]}","{ls[0]}",0);')
                             if self.args.placement == "facing":
@@ -157,6 +158,7 @@ class Application:
                 # persist frames
                 if self.args.save_frames:
                     cv2.imwrite(f'output/frame_{i}.jpg', cv2_img)
+            
 
         cv2.destroyAllWindows()
         pass

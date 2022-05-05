@@ -1,4 +1,4 @@
-from .validation_exception import ValidationException
+from validation_exception import ValidationException
 import os
 
 
