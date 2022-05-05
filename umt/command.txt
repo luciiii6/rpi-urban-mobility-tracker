@@ -1,0 +1,1 @@
+python app.py -modelpath /home/luci/licenta/model6000b16.tflite -labelmap /home/luci/licenta/labels.txt -placement above -camera -threshold 0.6 

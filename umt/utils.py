@@ -130,7 +130,6 @@ class Utils:
             interpreter.allocate_tensors()
 
         return interpreter
-
     @staticmethod
     def generate_detections(pil_img_obj, interpreter, threshold):
         
@@ -183,6 +182,12 @@ class Utils:
 
         # munge into deep sort detection objects
         detections = [Detection(bbox, score, feature, class_name) for bbox, score, feature, class_name in zip(bboxes, scores, features, classes)]
+        del input_details
+        del output_details
+        del bboxes
+        del classes
+        del scores
+        
         return detections
 
     @staticmethod
