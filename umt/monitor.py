@@ -1,10 +1,12 @@
 import psutil
 import subprocess
 import time
+import sys
 
 print("Start monitoring: ")
 
-command = "python app.py -modelpath /home/luci/licenta/model6000b16.tflite -labelmap /home/luci/licenta/labels.txt -placement above -camera -threshold 0.6".split()
+command = ["python", "app.py"] + sys.argv[1:]
+
 app_process = subprocess.Popen(command,
                                  stdout = subprocess.PIPE,
                                  stderr = subprocess.PIPE)
@@ -28,6 +30,7 @@ while True:
      app_status == psutil.STATUS_ZOMBIE or
      app_status == 0):
     print("Application died; restarting")
+    print(stderr)
     times_restarted = times_restarted + 1
     app_process = subprocess.Popen(command,
                                        stdout = subprocess.DEVNULL,

@@ -19,8 +19,24 @@ encoder = gd.create_box_encoder(w_path, batch_size=1)
 
 class Utils:
     @staticmethod
-    def calculate_line_parameters(point1, point2):
-        pass
+    def calculate_line_parameters(x1, y1, x2, y2):
+        #y = mx + b => b = y - mx
+        m = (y2 - y1) / (x2 - x1)
+
+        b = y1 - m*x1    
+
+        return m,b
+        
+    @staticmethod
+    def get_point_position(x1, y1, m, b):
+        
+        if y1 > (m*x1 + b):
+            return 'above'
+        
+        if y1 < (m*x1 + b):
+            return 'under'
+        
+        return 'on'
 
     @staticmethod
     def create_database_directory(curr_path):
@@ -87,47 +103,14 @@ class Utils:
     @staticmethod
     def initialize_detector(args):
 
-        TPU_PATH = 'models/tpu/mobilenet_ssd_v2_coco_quant/mobilenet_ssd_v2_coco_quant_postprocess_edgetpu.tflite'
-        CPU_PATH = 'models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29/detect.tflite'
+        print('   > TPU = FALSE')        
+        if args.model_path:
+            model_path = args.model_path
+            print('   > CUSTOM DETECTOR = TRUE')
+            print(f'      > DETECTOR PATH = {model_path}')
 
-        # initialize coral tpu model
-        if args.tpu:
-            print('   > TPU = TRUE')
-            
-            if args.model_path:
-                model_path = args.model_path
-                print('   > CUSTOM DETECTOR = TRUE')
-                print(f'      > DETECTOR PATH = {model_path}')
-                
-            else:
-                model_path = os.path.join(os.path.dirname(__file__), TPU_PATH)
-                print('   > CUSTOM DETECTOR = FALSE')
-            
-            _, *device = model_path.split('@')
-            edgetpu_shared_lib = 'libedgetpu.so.1'
-            interpreter = tflite.Interpreter(
-                    model_path,
-                    experimental_delegates=[
-                        tflite.load_delegate(edgetpu_shared_lib,
-                            {'device': device[0]} if device else {})
-                    ])
-            interpreter.allocate_tensors()
-
-        # initialize tflite model
-        else:
-            print('   > TPU = FALSE')
-            
-            if args.model_path:
-                model_path = args.model_path
-                print('   > CUSTOM DETECTOR = TRUE')
-                print(f'      > DETECTOR PATH = {model_path}')
-                
-            else:
-                print('   > CUSTOM DETECTOR = FALSE')
-                model_path = os.path.join(os.path.dirname(__file__), CPU_PATH)
-
-            interpreter = tf.lite.Interpreter(model_path=model_path)
-            interpreter.allocate_tensors()
+        interpreter = tf.lite.Interpreter(model_path=model_path)
+        interpreter.allocate_tensors()
 
         return interpreter
     @staticmethod
@@ -140,12 +123,13 @@ class Utils:
         img = pil_img_obj.resize((input_details[0]['shape'][2], 
                                 input_details[0]['shape'][1]))
 
-        input_mean = 127.5
-        input_std = 127.5
         input_data = np.expand_dims(img, axis=0)
+        del img
         
         # check the type of the input tensor
         if input_details[0]['dtype'] == np.float32:
+            input_mean = 127.5
+            input_std = 127.5
             input_data = (np.float32(input_data) - input_mean)/ input_std  
             
         interpreter.set_tensor(input_details[0]['index'], input_data)
@@ -156,12 +140,15 @@ class Utils:
         scores = np.squeeze(interpreter.get_tensor(output_details[0]['index']))
         num = np.squeeze(interpreter.get_tensor(output_details[2]['index']))
 
+        # bboxes = np.squeeze(interpreter.get_tensor(output_details[0]['index']))
+        # classes = np.squeeze(interpreter.get_tensor(output_details[1]['index']) + 1).astype(np.int32)
+        # scores = np.squeeze(interpreter.get_tensor(output_details[2]['index']))
+        # num = np.squeeze(interpreter.get_tensor(output_details[3]['index']))
+
         keep_idx = np.less(scores[np.greater(scores, threshold)], 1)
         bboxes = bboxes[:keep_idx.shape[0]][keep_idx]
         classes = classes[:keep_idx.shape[0]][keep_idx]
         scores = scores[:keep_idx.shape[0]][keep_idx]
-        pprint.pprint(len(scores))
-        pprint.pprint(scores)
 
         # denormalize bounding box dimensions
         if len(keep_idx) > 0:
@@ -191,9 +178,8 @@ class Utils:
         return detections
 
     @staticmethod
-    def parse_label_map(args, DEFAULT_LABEL_MAP_PATH):
-        if args.label_map_path == DEFAULT_LABEL_MAP_PATH: print('   > CUSTOM LABEL MAP = FALSE')
-        else: print(f'   > CUSTOM LABEL MAP = TRUE ({args.label_map_path})')
+    def parse_label_map(args):
+        print(f'   > CUSTOM LABEL MAP = TRUE ({args.label_map_path})')
 
         labels = {}
         for i, row in enumerate(open(args.label_map_path)):
