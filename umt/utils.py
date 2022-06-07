@@ -1,26 +1,36 @@
 import os
 from time import sleep
-import tflite_runtime.interpreter as tflite
 import tensorflow as tf
 from PIL import Image
 import numpy as np
-import pprint
 import cv2
-from scipy.spatial.distance import cosine
-import imutils
 from imutils.video import VideoStream
 from deep_sort.detection import Detection
 from deep_sort_tools import generate_detections as gd
 
-
-# initialize an instance of the deep-sort tracker
 w_path = os.path.join(os.path.dirname(__file__), 'deep_sort/mars-small128.pb')
 encoder = gd.create_box_encoder(w_path, batch_size=1)
 
 class Utils:
     @staticmethod
-    def calculate_line_parameters(point1, point2):
-        pass
+    def calculate_line_parameters(x1, y1, x2, y2):
+        #y = mx + b => b = y - mx
+        m = (y2 - y1) / (x2 - x1)
+
+        b = y1 - m*x1    
+
+        return m,b
+        
+    @staticmethod
+    def get_point_position(x1, y1, m, b):
+        
+        if y1 > (m*x1 + b):
+            return 'above'
+        
+        if y1 < (m*x1 + b):
+            return 'under'
+        
+        return 'on'
 
     @staticmethod
     def create_database_directory(curr_path):
@@ -28,108 +38,50 @@ class Utils:
         return
 
     @staticmethod    
-    def camera_frame_gen(args):
+    def camera_frame_generator(args):
 
-        # initialize the video stream and allow the camera sensor to warmup
-        print("> starting video stream...")
         vs = VideoStream(src=0).start()
-        sleep(2.0)
-        # loop over the frames from the video stream
+        sleep(1.0)
         while True:
-            # pull frame from video stream
             frame = vs.read()
 
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             yield Image.fromarray(frame)
-        pass
 
     @staticmethod
-    def image_seq_gen(args):
-
-        # collect images to be processed
-        images = []
-        for item in sorted(os.listdir(args.image_path)):
-            if item[-4:] == '.jpg': images.append(f'{args.image_path}{item}')
-        
-        # cycle through image sequence and yield a PIL img object
-        for frame in range(0, args.nframes): yield Image.open(images[frame])
-
-    @staticmethod
-    def video_frame_gen(args):
+    def video_frame_generator(args):
         
         counter = 0
         cap = cv2.VideoCapture(args.video_path)
         while(cap.isOpened()):
             counter += 1
             if counter > args.nframes: break
+
             if cv2.waitKey(1) & 0xFF == ord('q'): break
 
-            # pull frame from video stream
             _, frame = cap.read()
-
-            # array to PIL image format
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
             yield Image.fromarray(frame)
 
     @staticmethod
     def initialize_img_source(args):
 
-        # track objects from video file
-        if args.video_path: return Utils.video_frame_gen
-        
-        # track objects in image sequence
-        if args.image_path: return Utils.image_seq_gen
+        if args.video_path: return Utils.video_frame_generator
             
-        # track objects from camera source
-        if args.camera: return Utils.camera_frame_gen
+        if args.camera: return Utils.camera_frame_generator
 
     @staticmethod
     def initialize_detector(args):
+     
+        if args.model_path:
+            model_path = args.model_path
 
-        TPU_PATH = 'models/tpu/mobilenet_ssd_v2_coco_quant/mobilenet_ssd_v2_coco_quant_postprocess_edgetpu.tflite'
-        CPU_PATH = 'models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29/detect.tflite'
+        interpreter = tf.lite.Interpreter(model_path=model_path)
+        interpreter.allocate_tensors()
 
-        # initialize coral tpu model
-        if args.tpu:
-            print('   > TPU = TRUE')
-            
-            if args.model_path:
-                model_path = args.model_path
-                print('   > CUSTOM DETECTOR = TRUE')
-                print(f'      > DETECTOR PATH = {model_path}')
-                
-            else:
-                model_path = os.path.join(os.path.dirname(__file__), TPU_PATH)
-                print('   > CUSTOM DETECTOR = FALSE')
-            
-            _, *device = model_path.split('@')
-            edgetpu_shared_lib = 'libedgetpu.so.1'
-            interpreter = tflite.Interpreter(
-                    model_path,
-                    experimental_delegates=[
-                        tflite.load_delegate(edgetpu_shared_lib,
-                            {'device': device[0]} if device else {})
-                    ])
-            interpreter.allocate_tensors()
-
-        # initialize tflite model
-        else:
-            print('   > TPU = FALSE')
-            
-            if args.model_path:
-                model_path = args.model_path
-                print('   > CUSTOM DETECTOR = TRUE')
-                print(f'      > DETECTOR PATH = {model_path}')
-                
-            else:
-                print('   > CUSTOM DETECTOR = FALSE')
-                model_path = os.path.join(os.path.dirname(__file__), CPU_PATH)
-
-            interpreter = tf.lite.Interpreter(model_path=model_path)
-            interpreter.allocate_tensors()
 
         return interpreter
+        
     @staticmethod
     def generate_detections(pil_img_obj, interpreter, threshold):
         
@@ -140,28 +92,27 @@ class Utils:
         img = pil_img_obj.resize((input_details[0]['shape'][2], 
                                 input_details[0]['shape'][1]))
 
-        input_mean = 127.5
-        input_std = 127.5
         input_data = np.expand_dims(img, axis=0)
+        del img
         
         # check the type of the input tensor
         if input_details[0]['dtype'] == np.float32:
+            input_mean = 127.5
+            input_std = 127.5
             input_data = (np.float32(input_data) - input_mean)/ input_std  
             
         interpreter.set_tensor(input_details[0]['index'], input_data)
         interpreter.invoke()
 
+        confidences = np.squeeze(interpreter.get_tensor(output_details[0]['index']))
         bboxes = np.squeeze(interpreter.get_tensor(output_details[1]['index']))
-        classes = np.squeeze(interpreter.get_tensor(output_details[3]['index']) + 1).astype(np.int32)
-        scores = np.squeeze(interpreter.get_tensor(output_details[0]['index']))
         num = np.squeeze(interpreter.get_tensor(output_details[2]['index']))
+        classes = np.squeeze(interpreter.get_tensor(output_details[3]['index']) + 1).astype(np.int32)
 
-        keep_idx = np.less(scores[np.greater(scores, threshold)], 1)
+        keep_idx = np.less(confidences[np.greater(confidences, threshold)], 1)
         bboxes = bboxes[:keep_idx.shape[0]][keep_idx]
         classes = classes[:keep_idx.shape[0]][keep_idx]
-        scores = scores[:keep_idx.shape[0]][keep_idx]
-        pprint.pprint(len(scores))
-        pprint.pprint(scores)
+        confidences = confidences[:keep_idx.shape[0]][keep_idx]
 
         # denormalize bounding box dimensions
         if len(keep_idx) > 0:
@@ -181,23 +132,20 @@ class Utils:
         features = encoder(np.array(pil_img_obj), bboxes)
 
         # munge into deep sort detection objects
-        detections = [Detection(bbox, score, feature, class_name) for bbox, score, feature, class_name in zip(bboxes, scores, features, classes)]
+        detections = [Detection(bbox, score, feature, class_name) for bbox, score, feature, class_name in zip(bboxes, confidences, features, classes)]
         del input_details
         del output_details
         del bboxes
         del classes
-        del scores
+        del confidences
         
         return detections
 
     @staticmethod
-    def parse_label_map(args, DEFAULT_LABEL_MAP_PATH):
-        if args.label_map_path == DEFAULT_LABEL_MAP_PATH: print('   > CUSTOM LABEL MAP = FALSE')
-        else: print(f'   > CUSTOM LABEL MAP = TRUE ({args.label_map_path})')
+    def parse_label_map(args):
 
         labels = {}
         for i, row in enumerate(open(args.label_map_path)):
             labels[i] = row.replace('\n','')
-        
-        pprint.pprint(labels)
+
         return labels
