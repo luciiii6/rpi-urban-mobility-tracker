@@ -1,12 +1,9 @@
 import os
 from time import sleep
-import tflite_runtime.interpreter as tflite
 import tensorflow as tf
 from PIL import Image
 import numpy as np
 import cv2
-from scipy.spatial.distance import cosine
-import imutils
 from imutils.video import VideoStream
 from deep_sort.detection import Detection
 from deep_sort_tools import generate_detections as gd
