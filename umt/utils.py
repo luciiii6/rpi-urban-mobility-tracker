@@ -4,7 +4,6 @@ import tflite_runtime.interpreter as tflite
 import tensorflow as tf
 from PIL import Image
 import numpy as np
-import pprint
 import cv2
 from scipy.spatial.distance import cosine
 import imutils
@@ -12,8 +11,6 @@ from imutils.video import VideoStream
 from deep_sort.detection import Detection
 from deep_sort_tools import generate_detections as gd
 
-
-# initialize an instance of the deep-sort tracker
 w_path = os.path.join(os.path.dirname(__file__), 'deep_sort/mars-small128.pb')
 encoder = gd.create_box_encoder(w_path, batch_size=1)
 
@@ -44,75 +41,50 @@ class Utils:
         return
 
     @staticmethod    
-    def camera_frame_gen(args):
+    def camera_frame_generator(args):
 
-        # initialize the video stream and allow the camera sensor to warmup
-        print("> starting video stream...")
         vs = VideoStream(src=0).start()
-        sleep(2.0)
-        # loop over the frames from the video stream
+        sleep(1.0)
         while True:
-            # pull frame from video stream
             frame = vs.read()
 
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             yield Image.fromarray(frame)
-        pass
 
     @staticmethod
-    def image_seq_gen(args):
-
-        # collect images to be processed
-        images = []
-        for item in sorted(os.listdir(args.image_path)):
-            if item[-4:] == '.jpg': images.append(f'{args.image_path}{item}')
-        
-        # cycle through image sequence and yield a PIL img object
-        for frame in range(0, args.nframes): yield Image.open(images[frame])
-
-    @staticmethod
-    def video_frame_gen(args):
+    def video_frame_generator(args):
         
         counter = 0
         cap = cv2.VideoCapture(args.video_path)
         while(cap.isOpened()):
             counter += 1
             if counter > args.nframes: break
+
             if cv2.waitKey(1) & 0xFF == ord('q'): break
 
-            # pull frame from video stream
             _, frame = cap.read()
-
-            # array to PIL image format
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
             yield Image.fromarray(frame)
 
     @staticmethod
     def initialize_img_source(args):
 
-        # track objects from video file
-        if args.video_path: return Utils.video_frame_gen
-        
-        # track objects in image sequence
-        if args.image_path: return Utils.image_seq_gen
+        if args.video_path: return Utils.video_frame_generator
             
-        # track objects from camera source
-        if args.camera: return Utils.camera_frame_gen
+        if args.camera: return Utils.camera_frame_generator
 
     @staticmethod
     def initialize_detector(args):
-
-        print('   > TPU = FALSE')        
+     
         if args.model_path:
             model_path = args.model_path
-            print('   > CUSTOM DETECTOR = TRUE')
-            print(f'      > DETECTOR PATH = {model_path}')
 
         interpreter = tf.lite.Interpreter(model_path=model_path)
         interpreter.allocate_tensors()
 
+
         return interpreter
+        
     @staticmethod
     def generate_detections(pil_img_obj, interpreter, threshold):
         
@@ -135,20 +107,15 @@ class Utils:
         interpreter.set_tensor(input_details[0]['index'], input_data)
         interpreter.invoke()
 
+        confidences = np.squeeze(interpreter.get_tensor(output_details[0]['index']))
         bboxes = np.squeeze(interpreter.get_tensor(output_details[1]['index']))
-        classes = np.squeeze(interpreter.get_tensor(output_details[3]['index']) + 1).astype(np.int32)
-        scores = np.squeeze(interpreter.get_tensor(output_details[0]['index']))
         num = np.squeeze(interpreter.get_tensor(output_details[2]['index']))
+        classes = np.squeeze(interpreter.get_tensor(output_details[3]['index']) + 1).astype(np.int32)
 
-        # bboxes = np.squeeze(interpreter.get_tensor(output_details[0]['index']))
-        # classes = np.squeeze(interpreter.get_tensor(output_details[1]['index']) + 1).astype(np.int32)
-        # scores = np.squeeze(interpreter.get_tensor(output_details[2]['index']))
-        # num = np.squeeze(interpreter.get_tensor(output_details[3]['index']))
-
-        keep_idx = np.less(scores[np.greater(scores, threshold)], 1)
+        keep_idx = np.less(confidences[np.greater(confidences, threshold)], 1)
         bboxes = bboxes[:keep_idx.shape[0]][keep_idx]
         classes = classes[:keep_idx.shape[0]][keep_idx]
-        scores = scores[:keep_idx.shape[0]][keep_idx]
+        confidences = confidences[:keep_idx.shape[0]][keep_idx]
 
         # denormalize bounding box dimensions
         if len(keep_idx) > 0:
@@ -168,22 +135,20 @@ class Utils:
         features = encoder(np.array(pil_img_obj), bboxes)
 
         # munge into deep sort detection objects
-        detections = [Detection(bbox, score, feature, class_name) for bbox, score, feature, class_name in zip(bboxes, scores, features, classes)]
+        detections = [Detection(bbox, score, feature, class_name) for bbox, score, feature, class_name in zip(bboxes, confidences, features, classes)]
         del input_details
         del output_details
         del bboxes
         del classes
-        del scores
+        del confidences
         
         return detections
 
     @staticmethod
     def parse_label_map(args):
-        print(f'   > CUSTOM LABEL MAP = TRUE ({args.label_map_path})')
 
         labels = {}
         for i, row in enumerate(open(args.label_map_path)):
             labels[i] = row.replace('\n','')
-        
-        pprint.pprint(labels)
+
         return labels

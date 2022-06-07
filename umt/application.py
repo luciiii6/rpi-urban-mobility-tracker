@@ -45,12 +45,16 @@ class Application:
         if os.path.isfile(self.db_path):
             self.connection = sqlite3.connect(self.db_path)
             self.cursor = self.connection.cursor()
+            self.cursor.execute("SELECT * FROM timestamp ORDER BY ID DESC LIMIT 1")
+            last_record = self.cursor.fetchall()
+            self.counter_in = last_record[0][4]
+            self.counter_out = last_record[0][5]
         else:
             Utils.create_database_directory(os.path.abspath(os.curdir))
             self.connection = sqlite3.connect(self.db_path)
             self.cursor = self.connection.cursor()
             self.cursor.execute(
-                "CREATE TABLE timestamp (id INTEGER PRIMARY KEY AUTOINCREMENT, time TEXT, date TEXT, direction INTEGER)")
+                "CREATE TABLE timestamp (id INTEGER PRIMARY KEY AUTOINCREMENT, time TEXT, date TEXT, direction INTEGER, counter_in INTEGER, counter_out INTEGER, total INTEGER)")
             self.connection.commit()
 
         self.labels = Utils.parse_label_map(self.args)
@@ -73,7 +77,6 @@ class Application:
         for i, pil_img in enumerate(self.img_generator(self.args)):
             print('> FRAME:', i)
 
-            # add header to trajectory file
             if i == 0:
                 w, h = pil_img.size
                 if self.args.placement == "facing":
@@ -83,16 +86,10 @@ class Application:
                     coord_count = round(h/1.3)
                     self.m, self.b = Utils.calculate_line_parameters(10, coord_count, w-10, coord_count)
 
-            # get detections
             self.detections = Utils.generate_detections(
                 pil_img, self.interpreter, self.args.threshold)
 
-            # proceed to updating state
-            if len(self.detections) == 0:
-                print('   > no detections...')
-            else:
-
-                # update tracker
+            if len(self.detections) != 0:
                 self.tracker.predict()
                 self.tracker.update(self.detections)
                 self.ids = []
@@ -112,39 +109,38 @@ class Application:
                         current_pos = Utils.get_point_position((bbox[0] + bbox[2])/2, (bbox[1]+bbox[3])/2, self.m, self.b)
                         if self.counting_dict[track.track_id][2] == "under" and current_pos == "above":
                             ls = str(datetime.datetime.now()).split()
-                            self.cursor.execute(
-                                f'INSERT INTO timestamp(time,date,direction) VALUES ("{ls[1]}","{ls[0]}",1);')
                             if self.args.placement == "facing":
                                 self.counter_in = self.counter_in + 1
+                                self.cursor.execute(
+                                f'INSERT INTO timestamp(time,date,direction,counter_in,counter_out,total) VALUES ("{ls[1]}","{ls[0]}",1,{self.counter_in},{self.counter_out},{self.counter_in - self.counter_out});')
                             else:
                                 self.counter_out = self.counter_out + 1
+                                self.cursor.execute(
+                                f'INSERT INTO timestamp(time,date,direction,counter_in,counter_out,total) VALUES ("{ls[1]}","{ls[0]}",0,{self.counter_in},{self.counter_out},{self.counter_in - self.counter_out});')                           
                         if self.counting_dict[track.track_id][2] == "above" and current_pos == "under":
                             ls = str(datetime.datetime.now()).split()
-                            self.cursor.execute(
-                                f'INSERT INTO timestamp(time,date,direction) VALUES ("{ls[1]}","{ls[0]}",0);')
                             if self.args.placement == "facing":
                                 self.counter_out = self.counter_out + 1
+                                self.cursor.execute(
+                                f'INSERT INTO timestamp(time,date,direction,counter_in,counter_out,total) VALUES ("{ls[1]}","{ls[0]}",0,{self.counter_in},{self.counter_out},{self.counter_in - self.counter_out});')
                             else:
                                 self.counter_in = self.counter_in + 1
-
+                                self.cursor.execute(
+                                f'INSERT INTO timestamp(time,date,direction,counter_in,counter_out,total) VALUES ("{ls[1]}","{ls[0]}",1,{self.counter_in},{self.counter_out},{self.counter_in - self.counter_out});')
+                    
                         self.counting_dict[track.track_id] = [
                             (bbox[0] + bbox[2])/2, (bbox[1]+bbox[3])/2, current_pos]
                 self.connection.commit()
 
-                print(self.counter_in, self.counter_out)
 
-            # only for live display
             if self.args.live_view or self.args.save_frames:
 
-                # convert pil image to cv2
                 cv2_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
                 cv2.line(cv2_img, (int(50), int(coord_count)), (int(
                     pil_img.width - 50), int(coord_count)), (55, 55, 55), 5)
-
-                # cycle through actively tracked objects
-                for track in self.tracker.tracks:
+                    
+                for track in self.tracker.tracks:    
                     bbox = track.to_tlbr()
-                    #class_name = self.labels[track.class_name]
                     class_name = self.labels[0]
                     color = self.COLORS[int(track.track_id) %
                                         len(self.COLORS)].tolist()
